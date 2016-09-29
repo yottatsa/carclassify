@@ -2,20 +2,16 @@
 # -*- coding: utf-8 -*-
 # Author: Francois Boulogne
 
-import sys
 import os
 import os.path
+import sys
 import glob
 
 import numpy as np
-
 import skimage.io
-
-from sklearn import svm
-from sklearn import linear_model
 from skimage.draw import line
-
 from sklearn.externals import joblib
+
 
 def load_knowndata(filenames, shape):
     unknown = {'targets': [], 'data': [], 'name': []}
@@ -37,21 +33,24 @@ def load_knowndata(filenames, shape):
 
 
 def train(filenames, shape):
+    from sklearn import svm
+    #from sklearn import linear_model
     unknown = load_knowndata(filenames, shape)
     # Create a classifier: a support vector classifier
     classifier = svm.SVC(gamma=1e-8)
-    #classifier = linear_model.LogisticRegression()
+    # classifier = linear_model.LogisticRegression()
     # We learn the digits on the first half of the digits
     classifier.fit(unknown['data'], unknown['targets'])
     return classifier
 
+
 def mark_region(image, x, y, h, w, mark=None):
     if not mark:
         return
-    image[line(x, y, x, y+w)] = mark
-    image[line(x, y+w, x+h, y+w)] = mark
-    image[line(x+h, y+w, x+h, y)] = mark
-    image[line(x+h, y, x, y)] = mark
+    image[line(x, y, x, y + w)] = mark
+    image[line(x, y + w, x + h, y + w)] = mark
+    image[line(x + h, y + w, x + h, y)] = mark
+    image[line(x + h, y, x, y)] = mark
 
 
 if __name__ == '__main__':
@@ -69,16 +68,15 @@ if __name__ == '__main__':
         classifier = train(filenames, shape)
         joblib.dump(classifier, model)
 
-
     filenames = sorted(glob.glob('test/*.jpg'))
     for name in filenames:
         unknown = {'targets': [], 'data': [], 'name': []}
         result = os.path.join('result', os.path.basename(name))
         image = skimage.io.imread(name)
         h, w = image.shape
-        for x in range(0, h-dx, dx/3):
-            for y in range(0, w-dy, dy/3):
-                probe = image[x:x+dx,y:y+dy] 
+        for x in range(0, h - dx, dx / 3):
+            for y in range(0, w - dy, dy / 3):
+                probe = image[x:x + dx, y:y + dy]
                 if probe.shape != (dx, dy):
                     continue
                 name = (x, y, dx, dy)
@@ -95,12 +93,12 @@ if __name__ == '__main__':
         for pred, name in zip(predicted, unknown['name']):
             x, y, dx, dy = name
 
-            if cx <= x <= cx+dx and cy <= y <= cy+dy:
+            if cx <= x <= cx + dx and cy <= y <= cy + dy:
                 continue
 
             if pred == 0:
                 cx, cy = x, y
 
-            mark_region(image, x+5, y+5, dx-10, dy-10, mark=[200, 50, None][pred])
+            mark_region(image, x + 5, y + 5, dx - 10, dy - 10, mark=[200, 50, None][pred])
 
         skimage.io.imsave(result, image)
