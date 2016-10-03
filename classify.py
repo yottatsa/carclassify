@@ -1,51 +1,68 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import glob
-import os
-import os.path
+try:
+    import matplotlib
+    matplotlib.use("TkAgg")
+    from matplotlib import pyplot as plt
+except:
+    plt = None
+
 import sys
+import glob
+import os.path
 
 import numpy as np
 import skimage.io
 from skimage import exposure, img_as_float, img_as_ubyte
 from skimage.draw import line
-from skimage.transform import rescale
+from skimage.color import rgb2gray
+from skimage.feature import canny, hog
+from skimage.transform import rescale, ProjectiveTransform, warp
 from sklearn import svm
 from sklearn.externals import joblib
 from sklearn.model_selection import GridSearchCV
 
+from scipy import ndimage
 
-def adjust(img):
+import datetime
+
+
+def adjust(img, **kwargs):
     img = img_as_float(img)
-    p2, p98 = np.percentile(img, (2, 98))
-    img = exposure.rescale_intensity(img, in_range=(p2, p98))
-    return img_as_ubyte(img)
+    #p2, p98 = np.percentile(img, (2, 98))
+    #img = exposure.rescale_intensity(img, in_range=(p2, p98))
+
+    img = exposure.equalize_adapthist(img, clip_limit=0.03)
+    return img
 
 
 def extract(img):
-    feature = rescale(img, 0.5)
-    feature = feature.flatten()
-    return feature.tolist()
+    features = []
+    features = features + rescale(img, 0.5).flatten().tolist()
+    features = features + rescale(canny(img, sigma=2), 0.5).flatten().tolist()
+    return features
 
 
 def load_knowndata(filenames, shape):
+    dx, dy = shape
     X = []
     y = []
-    for index, filename in enumerate(filenames):
-        target = os.path.splitext(os.path.basename(filename))[0]
-        target = int(target.split('-')[0])
+    for filename in filenames:
         image = skimage.io.imread(filename)
-        if image.shape == shape:
-            print filename, target
-            X.append(extract(adjust(image)))
-            y.append(target)
+        for point in open(filename + '.txt').read().split():
+            iy, ix, target = map(int, point.split('x'))
+            probe = image[ix - dx / 2:ix + dx / 2, iy - dy / 2:iy + dy / 2]
+            if probe.shape == shape:
+                print filename, ix, iy, target
+                X.append(extract(probe))
+                y.append(target)
     return np.array(X), np.array(y)
 
 
 def train(filenames, shape):
-    Cs = np.logspace(-1, 3, 10)
-    gammas = np.logspace(-5, -1, 8)
+    Cs = np.logspace(-12, 3, 10)
+    gammas = np.logspace(-8, -1, 8)
     svc = svm.SVC(decision_function_shape='ovo')
     clf = GridSearchCV(estimator=svc, param_grid=dict(C=Cs, gamma=gammas),
                        n_jobs=-1)
@@ -61,15 +78,19 @@ def walk_image(image, shape, classifier):
     dx, dy = shape
     coords = []
     X = []
-    h, w = image.shape
-    for x in range(0, h, dx / 2):
-        for y in range(0, w, dy / 4):
-            probe = image[x:x + dx, y:y + dy]
-            if probe.shape == shape:
-                coords.append((x, y, dx, dy))
-                X.append(extract(probe))
 
-    predicted = classifier.predict(np.array(X))
+    if classifier:
+        h, w = image.shape
+        for x in range(0, h-dx+1, dx/10):
+            for y in range(0, w-dy+1, dy/3):
+                probe = image[x:x + dx, y:y + dy]
+                if probe.shape == shape:
+                    coords.append((x, y, dx, dy))
+                    X.append(extract(probe))
+
+        predicted = classifier.predict(np.array(X))
+    else:
+        predicted = []
     return coords, predicted
 
 
@@ -80,43 +101,115 @@ def mark_region(image, x, y, h, w, mark=None):
     image[line(x + h, y, x, y + w)] = mark
 
 
-def predict(filenames, shape, classifier):
-    for name in filenames:
+def download_series(url, num, filter_func, **kwargs):
+    images = [
+        filter_func(skimage.io.imread(url),
+                    **kwargs)
+        for x in range(num - 1)]
+    series = skimage.io.concatenate_images(images)
+    return series
 
-        result = os.path.join('result', os.path.basename(name))
-        image = skimage.io.imread(name)
 
-        image = adjust(image)
-        coords, predicted = walk_image(image, shape, classifier)
+def open_series(pattern, filter_func=lambda a: a, **kwargs):
+    def load_func(f, *args, **kwargs):
+        return filter_func(skimage.io.imread(f), **kwargs)
 
-        marks = []
-        maxmark = 0
-        for coord, pred in zip(coords, predicted):
-            maxmark = max(maxmark, pred)
-            if pred > 64:
-                x, y, dx, dy = coord
-                mark_region(image, x + 10, y + 10, dx - 20, dy - 20, pred)
+    ic = skimage.io.ImageCollection(pattern, load_func=load_func, **kwargs)
+    series = ic.concatenate()
+    return series
 
-        skimage.io.imsave(result, image)
-        print result
+
+def combine(imgs):
+    tf = ProjectiveTransform()
+    src = np.array((
+        (0, 0),
+        (0, 110),
+        (525, 110),
+        (525, 0)
+    ))
+    dst = np.array((
+        (169, 169),
+        (177, 280),
+        (604, 203),
+        (594, 129)
+    ))
+    of = (110, 525)
+    tf.estimate(src, dst)
+
+    img = np.median(imgs, axis=0)
+    img = ndimage.median_filter(img, 2)
+    img = warp(img, tf, output_shape=of)
+    img = rgb2gray(img)
+
+    return img
 
 
 if __name__ == '__main__':
     shape = dx, dy = 40, 50
-
-    if len(sys.argv) == 2:
-        model = sys.argv[1]
-    else:
-        model = 'model.pkl'
-
+    model = 'model.pkl'
     if os.path.exists(model):
         classifier = joblib.load(model)
         print model
     else:
         filenames = sorted(glob.glob('train/*.jpg'))
-        classifier = train(filenames, shape)
-        joblib.dump(classifier, model)
+        try:
+            classifier = train(filenames, shape)
+            joblib.dump(classifier, model)
+        except Exception, e:
+            print e
+            classifier = None
         print model
 
-    filenames = sorted(glob.glob('test/*.jpg'))
-    predict(filenames, shape, classifier)
+    try:
+        url = sys.argv[1]
+        img = download_series(url, 16, adjust)
+    except  IndexError:
+        img = open_series('test/*.jpg', adjust)
+    img = combine(img)
+
+    coords, predicted = walk_image(img, shape, classifier)
+    img = img_as_ubyte(img)
+    img_to_show = np.copy(img)
+
+    marks = []
+    for coord, pred in zip(coords, predicted):
+        if pred > 128:
+            x, y, dx, dy = coord
+            mark_region(img_to_show, x + 15, y + 15, dx - 30, dy - 30, pred)
+
+    try:
+        out = sys.argv[2]
+    except  IndexError:
+        out = None
+
+    if out:
+        skimage.io.imsave(out, img_to_show)
+        exit(0)
+
+    name = os.path.join("train", datetime.datetime.now().isoformat())
+    log = None
+
+
+    def onclick(event):
+        global log, name
+        if event and event.xdata:
+            if not log:
+                log = open('{}.jpg.txt'.format(name), 'a+')
+                log.write('\n\n')
+            log.write('{}x{}x{}\n'.format(int(event.xdata), int(event.ydata),
+                                          int(255/event.button)))
+            print('button=%d, x=%d, y=%d, xdata=%f, ydata=%f' %
+                  (event.button, event.x, event.y, event.xdata, event.ydata))
+
+
+    fig = plt.figure()
+    ax = fig.add_subplot()
+
+    plt.imshow(img_to_show, cmap='Greys_r')
+
+    cid = fig.canvas.mpl_connect('button_press_event', onclick)
+
+    plt.show()
+
+    if log:
+        skimage.io.imsave('{}.jpg'.format(name), img)
