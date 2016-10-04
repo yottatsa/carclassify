@@ -207,8 +207,10 @@ if __name__ == '__main__':
                         dy / 3 * 2, pred)
             holes[x:x + dx, y:y + dy] = pred
 
-    for p in calc_segments(holes[90:91, 0:of[1]], 45):
-        print "%0.1f slot near %d place" % (float(p[1])/45, p[0]/40 + 1)
+    segments = ["%0.1f slot near %d place" % (float(p[1])/dy, p[0]/dy + 1)
+                for p in calc_segments(holes[108:109, 0:of[1]], dy/3)]
+    if segments:
+        print ', '.join(segments)
     else:
         print "No spaces"
 
