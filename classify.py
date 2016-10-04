@@ -3,37 +3,42 @@
 
 try:
     import matplotlib
+
     matplotlib.use("TkAgg")
     from matplotlib import pyplot as plt
 except:
     plt = None
 
-import sys
+import datetime
 import glob
 import os.path
+import sys
 
 import numpy as np
 import skimage.io
 from skimage import exposure, img_as_float, img_as_ubyte
-from skimage.draw import line
 from skimage.color import rgb2gray
-from skimage.feature import canny, hog
+from skimage.draw import line
+from skimage.feature import canny
+from skimage.filters.rank import mean_bilateral
+from skimage.morphology import disk
 from skimage.transform import rescale, ProjectiveTransform, warp
 from sklearn import svm
 from sklearn.externals import joblib
 from sklearn.model_selection import GridSearchCV
 
-from scipy import ndimage
 
-import datetime
-
-
-def adjust(img, **kwargs):
+def adjust(img, tf, of, **kwargs):
     img = img_as_float(img)
-    #p2, p98 = np.percentile(img, (2, 98))
-    #img = exposure.rescale_intensity(img, in_range=(p2, p98))
-
+    img = warp(img, tf, output_shape=of)
     img = exposure.equalize_adapthist(img, clip_limit=0.03)
+    return img
+
+
+def combine(imgs):
+    img = np.mean(imgs, axis=0)
+    img = rgb2gray(img)
+    img = mean_bilateral(img, disk(20), s0=5, s1=5)
     return img
 
 
@@ -81,8 +86,8 @@ def walk_image(image, shape, classifier):
 
     if classifier:
         h, w = image.shape
-        for x in range(0, h-dx+1, dx/10):
-            for y in range(0, w-dy+1, dy/3):
+        for x in range(0, h - dx + 1, dx / 10):
+            for y in range(0, w - dy + 1, dy / 5):
                 probe = image[x:x + dx, y:y + dy]
                 if probe.shape == shape:
                     coords.append((x, y, dx, dy))
@@ -119,31 +124,6 @@ def open_series(pattern, filter_func=lambda a: a, **kwargs):
     return series
 
 
-def combine(imgs):
-    tf = ProjectiveTransform()
-    src = np.array((
-        (0, 0),
-        (0, 110),
-        (525, 110),
-        (525, 0)
-    ))
-    dst = np.array((
-        (169, 169),
-        (177, 280),
-        (604, 203),
-        (594, 129)
-    ))
-    of = (110, 525)
-    tf.estimate(src, dst)
-
-    img = np.median(imgs, axis=0)
-    img = ndimage.median_filter(img, 2)
-    img = warp(img, tf, output_shape=of)
-    img = rgb2gray(img)
-
-    return img
-
-
 if __name__ == '__main__':
     shape = dx, dy = 40, 50
     model = 'model.pkl'
@@ -160,11 +140,27 @@ if __name__ == '__main__':
             classifier = None
         print model
 
+    tf = ProjectiveTransform()
+    src = np.array((
+        (0, 0),
+        (0, 110),
+        (525, 110),
+        (525, 0)
+    ))
+    dst = np.array((
+        (169, 169),
+        (177, 280),
+        (604, 203),
+        (594, 129)
+    ))
+    of = (110, 525)
+    tf.estimate(src, dst)
+
     try:
         url = sys.argv[1]
-        img = download_series(url, 16, adjust)
+        img = download_series(url, 16, adjust, tf=tf, of=of)
     except  IndexError:
-        img = open_series('test/*.jpg', adjust)
+        img = open_series('test/*.jpg', adjust, tf=tf, of=of)
     img = combine(img)
 
     coords, predicted = walk_image(img, shape, classifier)
@@ -197,7 +193,7 @@ if __name__ == '__main__':
                 log = open('{}.jpg.txt'.format(name), 'a+')
                 log.write('\n\n')
             log.write('{}x{}x{}\n'.format(int(event.xdata), int(event.ydata),
-                                          int(255/event.button)))
+                                          int(255 / event.button)))
             print('button=%d, x=%d, y=%d, xdata=%f, ydata=%f' %
                   (event.button, event.x, event.y, event.xdata, event.ydata))
 
