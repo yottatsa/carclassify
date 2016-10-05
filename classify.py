@@ -48,7 +48,7 @@ def combine(imgs):
 
 def extract(img):
     features = []
-    features = features + rescale(canny(img, sigma=3), 0.2).flatten().tolist()
+    features = features + rescale(canny(rescale(img, 2), sigma=3), 0.1).flatten().tolist()
     features = features + rescale(canny(img, sigma=1), 0.5).flatten().tolist()
     features = features + rescale(img, 0.5).flatten().tolist()
     return features
@@ -87,23 +87,21 @@ def load_knowndata(filenames, shape):
                 continue
             ty, tx, target = map(int, point.split('x'))
             tx, ty, probe = get_probe(shape, image, tx - dx / 2, ty - dy / 2)
-            logging.info('Datapoint: %s %d %d %d', filename, tx, ty, target)
+            logging.debug('Datapoint: %s %d %d %d', filename, tx, ty, target)
             X.append(probe)
             y.append(target)
     return np.array(X), np.array(y)
 
 
 def train(filenames, shape):
-    Cs = np.logspace(-5, 5, 10)
-    gammas = np.logspace(-8, -1, 8)
-    svc = svm.SVC()
-    clf = GridSearchCV(estimator=svc, param_grid=dict(C=Cs, gamma=gammas),
-                       n_jobs=-1)
+    Cs = np.logspace(-1, 5, 12)
+    gammas = np.logspace(-8, -1, 7)
     X, y = load_knowndata(filenames, shape)
+    svc = svm.SVC(decision_function_shape='ovo')
+    clf = GridSearchCV(estimator=svc, param_grid=dict(C=Cs, gamma=gammas),
+                       cv=10, n_jobs=-1)
     clf.fit(X, y)
-    logging.info('Model: %f C=%f gamma=%f', clf.best_score_,
-                 clf.best_estimator_.C,
-                 clf.best_estimator_.gamma)
+    logging.info('Model: %f C=%f', clf.best_score_, clf.best_estimator_.C)
     return clf.best_estimator_
 
 
@@ -159,9 +157,16 @@ def calc_segments(arr, lpf):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
     shape = dx, dy = 40, 40
     model = 'model.pkl'
+
+    try:
+        out = sys.argv[2]
+    except  IndexError:
+        out = None
+
+
     if os.path.exists(model):
         classifier = joblib.load(model)
         logging.info(model)
@@ -218,10 +223,6 @@ if __name__ == '__main__':
     else:
         print "No spaces"
 
-    try:
-        out = sys.argv[2]
-    except  IndexError:
-        out = None
 
     if out:
         skimage.io.imsave(out, img_to_show)
@@ -233,7 +234,7 @@ if __name__ == '__main__':
                     "pos": 108
                 },
                 "fields": {
-                    "value": sum(map(lambda x: float(x[1]), segments)) / dy
+                    "value": sum(map(lambda x: round(float(x[1])/dy), segments))
                 }
             }
             logging.info(j_segments)
