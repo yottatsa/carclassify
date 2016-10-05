@@ -17,6 +17,7 @@ import sys
 
 import numpy as np
 import skimage.io
+from influxdb import InfluxDBClient
 from skimage import img_as_float, img_as_ubyte
 from skimage.color import rgb2gray
 from skimage.draw import line
@@ -113,8 +114,8 @@ def walk_image(image, shape, classifier):
 
     if classifier:
         h, w = image.shape
-        for x in range(0, h - dx + 1, dx / 3):
-            for y in range(0, w - dy + 1, dy / 3):
+        for x in range(0, h - dx + 1, dx / 4):
+            for y in range(0, w - dy + 1, dy / 4):
                 x, y, probe = get_probe(shape, image, x, y)
                 coords.append((x, y, dx, dy))
                 X.append(probe)
@@ -125,11 +126,12 @@ def walk_image(image, shape, classifier):
     return coords, predicted
 
 
-def mark_region(image, x, y, h, w, mark=None):
+def mark_region(image, holes, x, y, h, w, mark):
     image[line(x - 1, y, x + h - 1, y + w)] = 255 - mark
     image[line(x + h, y - 1, x, y + w - 1)] = 255 - mark
     image[line(x, y, x + h, y + w)] = mark
     image[line(x + h, y, x, y + w)] = mark
+    holes[x:x + h, y:y + w] = mark
 
 
 def download_series(url, num, filter_func, **kwargs):
@@ -203,14 +205,16 @@ if __name__ == '__main__':
     for coord, pred in zip(coords, predicted):
         if pred > 127:
             x, y, dx, dy = coord
-            mark_region(img_to_show, x + dx / 3, y + dy / 3, dx / 3 * 2,
+            mark_region(img_to_show, holes, x + dx / 3, y + dy / 3, dx / 3 * 2,
                         dy / 3 * 2, pred)
-            holes[x:x + dx, y:y + dy] = pred
+            # holes[x:x + dx, y:y + dy] = pred
 
-    segments = ["%0.1f slot near %d place" % (float(p[1])/dy, p[0]/dy + 1)
-                for p in calc_segments(holes[108:109, 0:of[1]], dy/3)]
-    if segments:
-        print ', '.join(segments)
+    segments = calc_segments(holes[108:109, 0:of[1]], dy / 3)
+    logging.info(segments)
+    p_segments = ["%0.1f slot near %d place" % (float(p[1]) / dy, p[0] / dy + 1)
+                  for p in segments]
+    if p_segments:
+        print ', '.join(p_segments)
     else:
         print "No spaces"
 
@@ -222,6 +226,23 @@ if __name__ == '__main__':
     if out:
         skimage.io.imsave(out, img_to_show)
         logging.info(out)
+        try:
+            j_segments = {
+                "measurement": 'free',
+                "tags": {
+                    "pos": 108
+                },
+                "fields": {
+                    "value": sum(map(lambda x: float(x[1]), segments)) / dy
+                }
+            }
+            logging.info(j_segments)
+            client = InfluxDBClient('localhost', 8086, 'root', 'root', 'cars')
+            client.write_points([j_segments])
+        except Exception, e:
+            logging.exception(e)
+
+
     else:
         name = os.path.join("train", datetime.datetime.now().isoformat())
         log = None
