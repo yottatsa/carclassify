@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Classify</title>
+    <style type="text/css">
+        /* box */
+        .box {
+            height: 36px;
+            width: 36px;
+            border: 2px solid black;
+            display: block;
+        }
+
+        /* labels-list */
+        .labels-list, .labels-list li {
+            display: inline-block;
+        }
+        .labels-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        .labels-list li {
+            width: 5em;
+        }
+        .labels-list li span {
+            vertical-align: top;
+        }
+        .labels-list .box {
+            display: inline-block;
+            height: 0.9em;
+            width: 0.9em;
+        }
+
+        /* images-list */
+        .images-list {
+            list-style: none;
+            padding: 0;
+        }
+        .images-list>li {
+            margin: 0 0 0.5em 0;
+        }
+        .images-list img {
+            margin: 0 1em 1em 0;
+            vertical-align: top;
+        }
+        .images-list .estimate, .images-list .labels-list {
+            font-size: 0.9em;
+        }
+        .images-list .labels-list {
+            width: 12em;
+        }
+        .images-list .estimate, .images-list .labels-list .box {
+            vertical-align: top;
+            margin-bottom: 1em;
+        }
+
+        /* overlay */
+        .overlay {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            position: absolute;
+        }
+        .overlay .box {
+            position: absolute;
+        }
+
+        /* trash */
+        .trash {
+            display: block;
+            border: 1px solid black;
+            text-align: center;
+            font-size: 30px;
+        }
+
+        /* modifiers */
+        .head {
+            position: fixed;
+            top: 0px;
+            left: 0px;
+            right: 0px;
+            background-color: white;
+            padding: 1em;
+            z-index: 999;
+        }
+        body {
+            margin: 0;
+            padding: 200px 1em 0;
+            background-color: white;
+	        font-size: 14px;
+	        font-family: "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, sans-serif;
+        }
+        .estimate {
+            padding-right: 1em;
+        }
+        .labels a {
+            display: inline-block;
+        }
+
+        /* https://terminal.sexy */
+        .labels-list .l1 { background-color: #CC6666; }
+        .l1 { border: 2px solid #A54242; }
+
+        .labels-list .l2 { background-color: #B5BD68; }
+        .l2 { border: 2px solid #8C9440; }
+
+        .labels-list .l3 { background-color: #F0C674; }
+        .l3 { border: 2px solid #DE935F; }
+
+        .labels-list .l4 { background-color: #81A2BE; }
+        .l4 { border: 2px solid #5F819D; }
+
+        .labels-list .l5 { background-color: #B294BB; }
+        .l5 { border: 2px solid #85678F; }
+
+        .labels-list .l6 { background-color: #8ABEB7; }
+        .l6 { border: 2px solid #5E8D87; }
+
+        .labels-list .l7 { background-color: #008080; }
+        .l7 { border: 2px solid #00ffff; }
+
+        .labels-list .l8 { background-color: #008000; }
+        .l8 { border: 2px solid #00ff00; }
+
+        .labels-list .l9 { background-color: #800000; }
+        .l9 { border: 2px solid #ff0000; }
+
+    </style>
+    <script type='text/javascript' src='js/knockout-min.js'></script>
+    <script type='text/javascript' src='js/knockout.dragdrop.js'></script>
+    <script>
+        function idClosure(prefix) {
+            var i = 0;
+            return function() {
+                i = i + 1;
+                return prefix+i;
+            }
+        }
+
+        newId = idClosure("id")
+        newLabelId = idClosure("l")
+
+        var Label = function(name) {
+            this.name = name;
+            this.estimate = "0%";
+            this.probes = ko.observableArray();
+            this.estimates = [];
+
+            this.amount = ko.pureComputed(function() {
+                return this.probes().length;
+            }, this);
+        }
+
+        var Estimate = function(label, image) {
+            var self = this;
+            this.label = label;
+            this.image = image;
+            this.name = label.name;
+            this.estimate = "0%";
+            this.probes = [];
+            this.delete = function () {
+                self.image.estimates.remove(self);
+            };
+        }
+
+        var Probe = function(image, label, x, y) {
+            var self = this;
+            this.image = image
+            this.label = label;
+            this.name = label.name;
+            this.x = ko.observable(x);
+            this.y = ko.observable(y);
+            this.delete = function () {
+                self.image.probes.remove(self);
+            };
+        }
+
+        var Image = function(name) {
+            var self = this;
+            this.name = name;
+            this.estimate = "0%";
+            this.probes = ko.observableArray();
+            this.estimates = ko.observableArray();
+            this.addProbe = function (label, x, y) {
+                var probe = new Probe(self, label, x, y);
+                self.probes.push(probe);
+                label.probes.push(probe)
+                return probe;
+            }
+            this.updateEstimate = function (label) {
+                var found = null;
+                self.estimates().forEach(function (estimate) {
+                    if (estimate.label == label) {
+                        found = estimate;
+                    }
+                });
+                if (found == null) {
+                    var estimate = new Estimate(label, self);
+                    self.estimates.push(estimate);
+                    label.estimates.push(estimate);
+                }
+                if (found != null) {
+                    var count = 0;
+                    self.probes().forEach(function (probe) {
+                        if (probe.label == label) {
+                            count++;
+                        }
+                    });
+                    if (count == 0) {
+                        found.delete();
+                    };
+                }
+            }
+
+            this.dragProbe = function(data, model) {
+                var rect = this.element.getBoundingClientRect();
+                var x = event.offsetX-rect.left;
+                var y = event.offsetY-rect.top
+                if (data instanceof Label) {
+                    self.addProbe(data, x, y);
+                    self.updateEstimate(data);
+                }
+                if (data instanceof Probe) {
+                    data.x(x);
+                    data.y(y);
+                }
+            };
+        }
+
+        window.onload = function () {
+            model = {
+                labels: ko.observableArray(),
+                images: ko.observableArray(),
+                trash: function (data, model) {
+                        if (data instanceof Label) {
+                            data.probes().forEach(function(probe) {
+                                probe.delete();
+                            });
+                            data.estimates.forEach(function(estimate) {
+                                estimate.delete();
+                            });
+                            model.labels.remove(data);
+                        };
+                        if (data instanceof Probe) {
+                            data.delete();
+                            data.image.updateEstimate(data.label);
+                        };
+                    },
+                labelHash: {},
+                addLabel: function(name) {
+                    if (name in this.labelHash) {
+                        return this.labelHash[name]
+                    } else {
+                        var label = new Label(name);
+                        this.labelHash[name] = label;
+                        this.labels.push(label);
+                        return label
+                    }
+                }
+            }
+            ko.applyBindings(model);
+            function b() {
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', '../api/images.json');
+                xhr.responseType = 'json';
+
+                xhr.onload = function() {
+                    xhr.response.images.forEach(function(item) {
+                        var image = new Image(item.name);
+                        item.probes.forEach(function(item) {
+                            var label = model.addLabel(item.label);
+                            image.addProbe(label, item.y, item.x);
+                            image.updateEstimate(label);
+                        });
+                        model.images.push(image);
+                        console.log(item);
+                    });
+                };
+
+                xhr.onerror = function() {
+                  console.log("Booo");
+                };
+
+                xhr.send();
+            }
+            b()
+        };
+    </script>
+</head>
+<body>
+
+<div class="head">
+    <p class="trash" id="trash" data-bind="dropZone: { accepts: ['label', 'probe'], drop: trash }">&#9842;</p>
+
+    <div class="labels">
+        <span>Labels: </span>
+        <ul id="labels" class="labels-list" data-bind="foreach: labels">
+            <li data-bind="attr: {id: 'label_' + $index() }"><span class="box" data-bind="css: name, dragZone: { name: 'label' }"></span> <span class="amount" data-bind="text: amount">N/A</span>/<span class="estimate" data-bind="text: estimate">N/A</span></li>
+        </ul>
+        <a href="" data-bind="click: addLabel">New label</a>
+    </div>
+</div>
+
+<div class="images">
+    <ul id="images" class="images-list" data-bind="foreach: images">
+        <li data-bind="attr: {id: 'image_' + $index() }">
+            <ul class="overlay" style="height: 120px; width: 680px;" data-bind="foreach: probes, dropZone: { accepts: ['label', 'probe'], drop: dragProbe }">
+                <li class="box" data-bind="css: name, style: {left: x() + 'px', top: y() + 'px'}, dragZone: { name: 'probe' }"></li>
+            </ul>
+            <img data-bind="attr: { src: name }" />
+            <span class="estimate" data-bind="text: estimate">N/A</span>
+            <ul class="labels-list" data-bind="foreach: estimates">
+                <li data-bind="attr: {id: 'est_' + $index() }"><span class="box" data-bind="css: name"></span> <span class="estimate" data-bind="text: estimate">N/A</span></li>
+            </ul>
+        </li>
+    </ul>
+</div>
+
+</body>
+</html>

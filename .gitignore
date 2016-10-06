@@ -5,4 +5,5 @@
 *.pkl
 *.npy
 *.txt
+*.json
 .DS_Store
