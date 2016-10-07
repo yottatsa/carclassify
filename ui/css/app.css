@@ -1,0 +1,119 @@
+/* box */
+.box {
+    height: 36px;
+    width: 36px;
+    border: 2px solid black;
+    display: block;
+}
+
+/* labels-list */
+ul.labels-list, ul.labels-list li {
+    display: inline-block;
+}
+ul.labels-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.labels-list .box {
+    display: inline-block;
+    height: 0.8em;
+    width: 0.8em;
+    border-width: 0.2em;
+}
+
+/* images-list */
+.images-list {
+    list-style: none;
+    padding: 0;
+}
+.images-list img {
+    margin-right: 0 em 0 0;
+}
+.images-list .labels-list {
+    font-size: 0.9em;
+}
+.images-list .labels-list, .images-list>li>.estimate  {
+    vertical-align: top;
+}
+
+.images-list .labels-list span {
+    vertical-align: middle;
+}
+.images-list .estimate {
+    padding-right: 0.5em;
+}
+
+
+/* overlay */
+.overlay {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    position: absolute;
+}
+.overlay .box {
+    position: absolute;
+}
+
+/* trash */
+.trash {
+    display: block;
+    border: 1px solid black;
+    text-align: center;
+    font-size: 2em;
+}
+
+/* modifiers */
+body {
+    margin: 0;
+    padding-top: 120px;
+    background-color: white;
+    font-size: 14px;
+    font-family: "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, sans-serif;
+}
+
+.draggable { cursor: move; }
+
+.fork {
+    position: fixed; top: 0; right: 0; border: 0;
+    z-index: 99999;
+}
+
+/* https://terminal.sexy */
+.labels-list .l1 { background-color: #CC6666; }
+.l1 { border: 2px solid #A54242; }
+
+.labels-list .l2 { background-color: #B5BD68; }
+.l2 { border: 2px solid #8C9440; }
+
+.labels-list .l3 { background-color: #F0C674; }
+.l3 { border: 2px solid #DE935F; }
+
+.labels-list .l4 { background-color: #81A2BE; }
+.l4 { border: 2px solid #5F819D; }
+
+.labels-list .l5 { background-color: #B294BB; }
+.l5 { border: 2px solid #85678F; }
+
+.labels-list .l6 { background-color: #8ABEB7; }
+.l6 { border: 2px solid #5E8D87; }
+
+.labels-list .l7 { background-color: #008080; }
+.l7 { border: 2px solid #00ffff; }
+
+.labels-list .l8 { background-color: #008000; }
+.l8 { border: 2px solid #00ff00; }
+
+.labels-list .l9 { background-color: #800000; }
+.l9 { border: 2px solid #ff0000; }
+
+.r1 { border: 2px dashed #A54242; }
+.r2 { border: 2px dashed #8C9440; }
+.r3 { border: 2px dashed #DE935F; }
+.r4 { border: 2px dashed #5F819D; }
+.r5 { border: 2px dashed #85678F; }
+.r6 { border: 2px dashed #5E8D87; }
+.r7 { border: 2px dashed #00ffff; }
+.r8 { border: 2px dashed #00ff00; }
+.r9 { border: 2px dashed #ff0000; }

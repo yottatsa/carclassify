@@ -161,11 +161,40 @@ if __name__ == '__main__':
     shape = dx, dy = 40, 40
     model = 'model.pkl'
 
+    if True:
+        api = {'images': []}
+        l = []
+        r = []
+        filenames = sorted(glob.glob('train/*.jpg'))
+        for filename in filenames:
+            image = skimage.io.imread(filename)
+            img = {'name': '../'+filename, 'probes': []}
+            api['images'].append(img)
+            for point in open(filename + '.txt').read().split():
+                if point.startswith('#'):
+                    continue
+                ty, tx, target = map(int, point.split('x'))
+                if target > 127:
+                    t=l
+                    tt='l'
+                else:
+                    t=r
+                    tt='r'
+                if target not in t:
+                    t.append(target)
+                tx, ty, probe = get_probe(shape, image, tx - dx / 2, ty - dy / 2)
+                prb = {'x': ty, 'y': tx, 'label': '{}{}'.format(tt,t.index(target)+1)}
+                img['probes'].append(prb)
+
+        import json
+        json.dump( api, open('api/images.json', 'w'),indent=4)
+        print api
+        exit(0)
+
     try:
         out = sys.argv[2]
     except  IndexError:
         out = None
-
 
     if os.path.exists(model):
         classifier = joblib.load(model)
