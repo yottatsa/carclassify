@@ -1,9 +1,13 @@
 /* box */
 .box {
-    height: 36px;
-    width: 36px;
+    height: 48px;
+    width: 48px;
+    margin: 2px 0 0 2px;
     border: 2px solid black;
     display: block;
+
+    color: black;
+    text-shadow: 1px 1px 0 white;
 }
 
 /* labels-list */
@@ -45,14 +49,14 @@ ul.labels-list {
 }
 
 
-/* overlay */
-.overlay {
+/* image-overlay */
+.image-overlay {
     list-style: none;
     margin: 0;
     padding: 0;
     position: absolute;
 }
-.overlay .box {
+.image-overlay .box {
     position: absolute;
 }
 
@@ -67,7 +71,7 @@ ul.labels-list {
 /* modifiers */
 body {
     margin: 0;
-    padding-top: 120px;
+    padding-top: 170px;
     background-color: white;
     font-size: 14px;
     font-family: "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, sans-serif;
@@ -78,6 +82,15 @@ body {
 .fork {
     position: fixed; top: 0; right: 0; border: 0;
     z-index: 99999;
+}
+
+.labels-list, .image-overlay {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 
 /* https://terminal.sexy */

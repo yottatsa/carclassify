@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <title>Classify</title>
-    <link href="css/bootstrap.min.css" rel="stylesheet"/>
     <link href="css/app.css" rel="stylesheet"/>
+    <link href="css/bootstrap.min.css" rel="stylesheet"/>
     <script type="text/javascript" src="js/jquery-3.1.1.min.js"></script>
     <script type="text/javascript" src="js/bootstrap.min.js"></script>
     <script type="text/javascript" src="js/knockout-min.js"></script>
@@ -14,54 +14,78 @@
     <script type="text/javascript" src="js/app.js"></script>
 </head>
 <body>
-    <a class="fork" href="https://github.com/yottatsa/carclassify"><img src="https://s3.amazonaws.com/github/ribbons/forkme_right_darkblue_121621.png" alt="Fork me on GitHub"></a>
+    <a class="fork" href="https://github.com/yottatsa/carclassify"><img src="img/forkme_right_darkblue_121621.png" alt="Fork me on GitHub"></a>
 
     <nav class="navbar navbar-default navbar-fixed-top">
         <div class="container-fluid">
-            <p class="trash" data-bind="dropZone: { accepts: ['label', 'probe'], drop: trash }">&#9842;</p>
+            <p class="trash" data-bind="dropZone: { accepts: ['label', 'probe', 'estimate'], drop: trash }">&#9842;</p>
+        </div>
+        <div class="container-fluid">
             <div class="nav navbar-nav btn-group">
                 <div class="labels-list nav navbar-nav btn-group" role="group" data-bind="foreach: labels" data-toggle="buttons">
                      <label class="btn btn-default navbar-btn" data-bind="visible: name[0] == 'l'">
                          <input type="checkbox" autocomplete="off" data-bind="checkbox: showonly">
-                         <span class="box" data-bind="css: name, dragZone: { name: 'label' }"></span>
+                         <span class="box" data-bind="css: name, dragZone: { name: 'label' }, dropZone: { accepts: 'label', drop: mergeLabels }"></span>
                          <span class="amount" data-bind="text: amount">N/A</span>/<span class="estimate" data-bind="text: estimate">N/A</span>
                     </label>
                 </div>
-                <button class="btn btn-default navbar-btn btn-primary" role="button" data-bind="click: function(){addLabel(null, 'l')}">+</button>
+                <button class="btn btn-default navbar-btn" role="button" data-bind="click: function(){addLabel(null, 'l')}">+</button>
             </div>
             <div class="nav navbar-nav btn-group">
                 <div class="labels-list nav navbar-nav btn-group" role="group" data-bind="foreach: labels" data-toggle="buttons">
                      <label class="btn btn-default navbar-btn" data-bind="visible: name[0] == 'r'">
                          <input type="checkbox" autocomplete="off" data-bind="checkbox: showonly">
-                         <span class="box" data-bind="css: name, dragZone: { name: 'label' }"></span>
+                         <span class="box" data-bind="css: name, dragZone: { name: 'label' }, dropZone: { accepts: 'label', drop: mergeLabels }"></span>
                          <span class="amount" data-bind="text: amount">N/A</span>/<span class="estimate" data-bind="text: estimate">N/A</span>
                     </label>
                 </div>
-                <button class="btn btn-default navbar-btn btn-primary" role="button" data-bind="click: function(){addLabel(null, 'r')}">+</button>
+                <button class="btn btn-default navbar-btn" role="button" data-bind="click: function(){addLabel(null, 'r')}">+</button>
+            </div>
+            <button type="button" class="btn btn-primary navbar-btn" data-loading-text="Loading" data-bind="click: getNewImages">New image</button>
+        </div>
+        <div class="container-fluid">
+            <div class="nav navbar-nav">
+                <button type="button" class="btn btn-danger navbar-btn" data-loading-text="Saving" data-bind="click: saveModel">Save model</button>
+                Score: <span data-bind="text: (score()*100).toFixed(1)">N/A</span>%
+                C=<span data-bind="text: C().toFixed(0)">N/A</span>
             </div>
         </div>
     </nav>
 
-    <div class="images">
-        <ul class="images-list container-fluid" data-bind="foreach: images">
-            <li class="panel panel-default panel-body row" data-bind="visible: filteredProbes().length > 0">
-                <div class="col-md-9">
-                    <ul class="overlay" style="height: 120px; width: 680px;" data-bind="foreach: filteredProbes, dropZone: { accepts: ['label', 'probe'], drop: dragProbe }">
-                        <li class="box" data-bind="css: name, style: {left: x() + 'px', top: y() + 'px'}, dragZone: { name: 'probe' }"></li>
-                    </ul>
-                    <img data-bind="attr: { src: name }" />
-                </div>
-                <div class="col-md-3">
-                    <span class="estimate" data-bind="text: estimate">N/A</span>
-                    <ul class="labels-list" data-bind="foreach: estimates">
-                        <li>
-                            <span class="box" data-bind="css: name"></span>
-                            <span class="estimate" data-bind="text: estimate">N/A</span>
-                        </li>
-                    </ul>
-                </div>
+    <div class="images container-fluid">
+        <ul class="images-list" data-bind="foreach: images">
+            <li class="panel panel-default panel-body" data-bind="visible: probes().length == 0 || filteredProbes().length > 0">
+                <ul class="image-overlay" style="height: 120px; width: 680px;" data-bind="foreach: filteredProbes, dropZone: { accepts: ['label', 'probe'], drop: dragProbe }">
+                    <li class="box" data-bind="css: label, style: {left: x() + 'px', top: y() + 'px'}, dragZone: { name: 'probe' }"></li>
+                </ul>
+                <img data-bind="attr: { src: name }" />
+                <span class="estimate" data-bind="text: estimate">N/A</span>
             </li>
         </ul>
     </div>
+
+    <div id="newImageModal" class="modal fade" tabindex="-1" role="dialog">
+      <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            <h4 class="modal-title">New image</h4>
+          </div>
+          <div class="modal-body" data-bind="foreach: newImages">
+            <ul class="image-overlay" style="height: 120px; width: 680px;" data-bind="foreach: probes">
+              <li class="box" data-bind="css: label, style: {left: x() + 'px', top: y() + 'px'}, text: confidence"></li>
+            </ul>
+            <img data-bind="attr: { src: name }" />
+            <ul data-bind="foreach: segments">
+              <li><span data-bind="text: y"></span>: <span data-bind="text: total"></span></li>
+            </ul>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-primary" data-bind="click: saveNewImages">Save image</button>
+          </div>
+        </div><!-- /.modal-content -->
+      </div><!-- /.modal-dialog -->
+    </div><!-- /.modal -->
 </body>
 </html>
