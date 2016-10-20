@@ -30,7 +30,7 @@ def calc_segments(labels, lines=[90], dy=40):
         bands = np.unique(label(arr == 0),
                           return_index=True,
                           return_counts=True)
-        spaces = [i for i in zip(bands[1], bands[2])[1:] if i[1] >= dy]
+        spaces = [i for i in zip(bands[1], bands[2])[1:] if i[1] >= dy/2]
         total = sum(map(lambda x: round(float(x[1]) / dy), spaces))
         segments.append({'y': line, 'spaces': spaces, 'total': int(total)})
     return segments
@@ -61,7 +61,7 @@ class Image(dict):
 
 
 class Model(list):
-    def __init__(self, db='train', shape=(50, 50), cutoff=0.8, overlap=0.3):
+    def __init__(self, db='train', shape=(50, 50), cutoff=0.8, overlap=0.25):
         self.db = db
         self.shape = shape
         self.modelfile = os.path.join(db, 'images.json')
