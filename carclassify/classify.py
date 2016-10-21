@@ -11,14 +11,17 @@ import skimage.io
 from influxdb import InfluxDBClient
 from skimage import img_as_float, img_as_ubyte
 from skimage.color import rgb2gray
+from skimage.draw import line
 from skimage.exposure import equalize_adapthist
 from skimage.feature import canny
 from skimage.morphology import label
 from skimage.restoration import denoise_bilateral
 from skimage.transform import rescale, ProjectiveTransform, warp
-from sklearn import svm
+from sklearn.svm import SVC
+from sklearn.neural_network import MLPClassifier
 from sklearn.externals import joblib
 from sklearn.model_selection import GridSearchCV
+from sklearn.preprocessing import RobustScaler, StandardScaler
 
 from nms import nms
 
@@ -61,12 +64,15 @@ class Image(dict):
 
 
 class Model(list):
-    def __init__(self, db='train', shape=(50, 50), cutoff=0.8, overlap=0.25):
+    def __init__(self, db='train', shape=(50, 50), cutoff=0.9, overlap=0.3, mode='mlp'):
         self.db = db
         self.shape = shape
         self.modelfile = os.path.join(db, 'images.json')
-        self.clffile = os.path.join(db, 'model.pkl')
+        self.mode = mode
+        self.clffile = os.path.join(db, mode+'model.pkl')
+        self.scalerfile = os.path.join(db, mode+'scaler.pkl')
         self.clf = None
+        self.scaler = None
         self.metadata = {}
         self.classes = {}
         self.labels = {}
@@ -92,13 +98,7 @@ class Model(list):
         return x, y, data
 
     def extract(self, img):
-        features = []
-        features = features + rescale(canny(rescale(img, 2), sigma=2),
-                                      0.1).flatten().tolist()
-        features = features + rescale(canny(img, sigma=1),
-                                      0.2).flatten().tolist()
-        features = features + rescale(img, 0.5).flatten().tolist()
-        return features
+        return rescale(img, 0.25).flatten().tolist()
 
     def add_image(self, data):
         if not data['probes']:
@@ -129,8 +129,9 @@ class Model(list):
             self.metadata.update(model.get('metadata', {}))
             self.labels = dict([(v, k) for k, v in self.classes.items()])
 
-            if os.path.exists(self.clffile):
+            if os.path.exists(self.clffile) and os.path.exists(self.scalerfile):
                 self.clf = joblib.load(self.clffile)
+                self.scaler = joblib.load(self.scalerfile)
 
     def dump(self):
         if not self.clf:
@@ -141,6 +142,7 @@ class Model(list):
             'metadata': self.metadata,
         }, open(self.modelfile, 'w'), indent=4)
         joblib.dump(self.clf, self.clffile)
+        joblib.dump(self.scaler, self.scalerfile)
 
     def cleanup(self):
         storage = set(glob.glob(os.path.join(self.db, '*.jpg')))
@@ -178,26 +180,54 @@ class Model(list):
         return np.array(X), np.array(y)
 
     def fit(self):
+        return {'svm': self._fit_svm, 'mlp': self._fit_mlp }[self.mode]()
+
+    def _fit_svm(self):
         if len(self) == 0:
             self.clf = None
             return
 
-        Cs = np.logspace(-1, 5, 12)
+        Cs = np.logspace(-1, 5, 6)
         gammas = np.logspace(-8, -1, 7)
         X, y = self._learn_data()
-        svc = svm.SVC(decision_function_shape='ovo', probability=True)
+        self.scaler = RobustScaler()
+        self.scaler.fit(X)
+        X = self.scaler.transform(X)
+
+        svc = SVC(decision_function_shape='ovo', probability=True)
         clf = GridSearchCV(estimator=svc,
                            param_grid=dict(C=Cs, gamma=gammas),
-                           cv=10, n_jobs=-1)
+                           cv=5, n_jobs=-1)
         clf.fit(X, y)
-
         self.clf = clf.best_estimator_
         self.metadata['score'] = clf.best_score_
         self.metadata['C'] = clf.best_estimator_.C
         self.metadata['gamma'] = clf.best_estimator_.gamma
+        logging.info('Model: %s', clf.best_estimator_)
+        return self.clf
 
-        logging.info('Model: %s', self.metadata)
+    def _fit_mlp(self):
+        if len(self) == 0:
+            self.clf = None
+            return
+        X, y = self._learn_data()
+        size = self.shape[0]*self.shape[1]/16
+        sizes = [(int(1.2*size),int(1.2*size),int(0.1*size),)]
+        alphas = 10.0 ** -np.arange(1, 7)
+        self.scaler = StandardScaler()
+        self.scaler.fit(X)
+        X = self.scaler.transform(X)
+        mlp = MLPClassifier(solver='lbfgs', random_state=1, activation='relu', max_iter=2000, early_stopping=True, validation_fraction=0.8)
+        clf = GridSearchCV(estimator=mlp,
+                           param_grid=dict(hidden_layer_sizes=sizes, alpha=alphas),
+                           cv=5)
 
+        clf.fit(X, y)
+        self.clf = clf.best_estimator_
+        self.metadata['score'] = clf.best_score_
+        self.metadata['size'] = ', '.join(map(str, clf.best_estimator_.hidden_layer_sizes))
+        self.metadata['alpha'] = clf.best_estimator_.alpha
+        logging.info('Model: %s', self.clf)
         return self.clf
 
     def predict(self, image):
@@ -215,8 +245,9 @@ class Model(list):
                 x, y, probe = self.get_probe(image, x, y)
                 coords.append((x, y, dx, dy))
                 X.append(probe)
-
-        T = self.clf.predict_proba(np.array(X))
+        X = np.array(X)
+        X = self.scaler.transform(X)
+        T = self.clf.predict_proba(X)
         indices, classes = zip(
             *[(i, c) for i, c in enumerate(self.clf.classes_) if c > 127])
         P = T[:, (indices)]
@@ -284,7 +315,7 @@ class ImageFabric():
             img = self.open_series('test/*.jpg')
         return self.combine(img)
 
-    def get(self, name=None):
+    def get(self, name=None, draw=False):
         img = self.fetch()
 
         labels = np.zeros(shape=img.shape)
@@ -297,6 +328,15 @@ class ImageFabric():
                 'y': y,
                 'label': self.model.labels[label],
                 'confidence': int(confidence * 100)})
+            if draw:
+                x = int(x)
+                y = int(y)
+                dx = int(dx)
+                dy = int(dy)
+                img[line(y - 2, x - 1, y + dy - 2, x + dx - 1)] = 1
+                img[line(y + dy - 1, x - 2, y - 1, x + dx - 2)] = 1
+                img[line(y - 1, x - 1, y + dy - 1, x + dx - 1)] = -1
+                img[line(y + dy - 1, x - 1, y - 1, x + dx - 1)] = -1
 
         segments = calc_segments(labels)
         logging.info(segments)
@@ -304,6 +344,7 @@ class ImageFabric():
         if not name:
             name = os.path.join(self.model.db,
                                 datetime.datetime.now().isoformat()) + ".jpg"
+
         skimage.io.imsave(name, img)
 
         return {
@@ -317,7 +358,7 @@ def oneshot(url, out, dy=40):
     model = Model()
     images = ImageFabric(model, url)
     model.load(skip_model=True)
-    probe = images.get(out)
+    probe = images.get(out, draw=True)
 
     data = []
     for segments in probe['segments']:
@@ -327,7 +368,7 @@ def oneshot(url, out, dy=40):
                 "pos": segments['y']
             },
             "fields": {
-                "value": segments['total']
+                "value": float(segments['total'])
             }
         })
         if segments['total'] != 0:

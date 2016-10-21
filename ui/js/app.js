@@ -21,7 +21,6 @@ function Model() {
     var self = this;
     this.labelHash = {};
     this.score = ko.observable(0);
-    this.C = ko.observable(0);
     this.labels = ko.observableArray();
     this.images = ko.observableArray();
     this.newImages = ko.observableArray();
@@ -54,7 +53,7 @@ function Model() {
     };
     this.loadModel = function(model) {
         $.get("/api/images.json", function(data) {
-            ko.mapping.fromJS({images: data.images, C: data.metadata.C, score: data.metadata.score}, model)
+            ko.mapping.fromJS({images: data.images, score: data.metadata.score}, model)
         });
     };
     this.saveModel = function(model, event) {

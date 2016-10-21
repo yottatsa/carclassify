@@ -47,7 +47,6 @@
             <div class="nav navbar-nav">
                 <button type="button" class="btn btn-danger navbar-btn" data-loading-text="Saving" data-bind="click: saveModel">Save model</button>
                 Score: <span data-bind="text: (score()*100).toFixed(1)">N/A</span>%
-                C=<span data-bind="text: C().toFixed(0)">N/A</span>
             </div>
         </div>
     </nav>
@@ -75,14 +74,14 @@
             <ul class="image-overlay" style="height: 120px; width: 680px;" data-bind="foreach: probes">
               <li class="box" data-bind="css: label, style: {left: x() + 'px', top: y() + 'px'}, text: confidence"></li>
             </ul>
-            <img data-bind="attr: { src: name }" />
-            <ul data-bind="foreach: segments">
-              <li><span data-bind="text: y"></span>: <span data-bind="text: total"></span></li>
+            <ul class="image-overlay" data-bind="foreach: segments">
+              <li class="spaces" data-bind="style: {top: y() + 'px'}, text: total"></li>
             </ul>
+            <img data-bind="attr: { src: name }" />
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
-            <button type="button" class="btn btn-primary" data-bind="click: saveNewImages">Save image</button>
+            <button type="button" class="btn btn-primary" data-bind="click: saveNewImages">Add to set</button>
           </div>
         </div><!-- /.modal-content -->
       </div><!-- /.modal-dialog -->

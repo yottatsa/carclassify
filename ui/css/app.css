@@ -33,6 +33,8 @@ ul.labels-list {
 }
 .images-list img {
     margin-right: 0 em 0 0;
+    height: 120px;
+    width: 680px;
 }
 .images-list .labels-list {
     font-size: 0.9em;
@@ -58,6 +60,14 @@ ul.labels-list {
 }
 .image-overlay .box {
     position: absolute;
+}
+
+.image-overlay .spaces {
+    position: absolute;
+    left: 0;
+    width: 700px;
+    text-align: right;
+    border-top: 1px solid green;
 }
 
 /* trash */
