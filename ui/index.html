@@ -26,7 +26,7 @@
                      <label class="btn btn-default navbar-btn" data-bind="visible: name[0] == 'l'">
                          <input type="checkbox" autocomplete="off" data-bind="checkbox: showonly">
                          <span class="box" data-bind="css: name, dragZone: { name: 'label' }, dropZone: { accepts: 'label', drop: mergeLabels }"></span>
-                         <span class="amount" data-bind="text: amount">N/A</span>/<span class="estimate" data-bind="text: estimate">N/A</span>
+                         <span class="amount" data-bind="text: amount">N/A</span>
                     </label>
                 </div>
                 <button class="btn btn-default navbar-btn" role="button" data-bind="click: function(){addLabel(null, 'l')}">+</button>
@@ -36,7 +36,7 @@
                      <label class="btn btn-default navbar-btn" data-bind="visible: name[0] == 'r'">
                          <input type="checkbox" autocomplete="off" data-bind="checkbox: showonly">
                          <span class="box" data-bind="css: name, dragZone: { name: 'label' }, dropZone: { accepts: 'label', drop: mergeLabels }"></span>
-                         <span class="amount" data-bind="text: amount">N/A</span>/<span class="estimate" data-bind="text: estimate">N/A</span>
+                         <span class="amount" data-bind="text: amount">N/A</span>
                     </label>
                 </div>
                 <button class="btn btn-default navbar-btn" role="button" data-bind="click: function(){addLabel(null, 'r')}">+</button>

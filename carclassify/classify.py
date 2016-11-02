@@ -13,27 +13,25 @@ from skimage import img_as_float, img_as_ubyte
 from skimage.color import rgb2gray
 from skimage.draw import line
 from skimage.exposure import equalize_adapthist
-from skimage.feature import canny
 from skimage.morphology import label
 from skimage.restoration import denoise_bilateral
 from skimage.transform import rescale, ProjectiveTransform, warp
-from sklearn.svm import SVC
-from sklearn.neural_network import MLPClassifier
 from sklearn.externals import joblib
-from sklearn.model_selection import GridSearchCV
-from sklearn.preprocessing import RobustScaler, StandardScaler
+from sklearn.neural_network import MLPClassifier
+from sklearn.model_selection import cross_val_score
+from sklearn.preprocessing import StandardScaler
 
 from nms import nms
 
 
-def calc_segments(labels, lines=[90], dy=40):
+def calc_segments(labels, lines=[100], dy=40):
     segments = []
     for line in lines:
-        arr = labels[line, :]
+        arr = labels[line, 10:-40]
         bands = np.unique(label(arr == 0),
                           return_index=True,
                           return_counts=True)
-        spaces = [i for i in zip(bands[1], bands[2])[1:] if i[1] >= dy/2]
+        spaces = [i for i in zip(bands[1], bands[2])[1:] if i[1] >= dy / 2]
         total = sum(map(lambda x: round(float(x[1]) / dy), spaces))
         segments.append({'y': line, 'spaces': spaces, 'total': int(total)})
     return segments
@@ -64,13 +62,13 @@ class Image(dict):
 
 
 class Model(list):
-    def __init__(self, db='train', shape=(50, 50), cutoff=0.9, overlap=0.3, mode='mlp'):
+    def __init__(self, db='train', shape=(50, 50), cutoff=0.9, overlap=0.3):
         self.db = db
         self.shape = shape
         self.modelfile = os.path.join(db, 'images.json')
-        self.mode = mode
-        self.clffile = os.path.join(db, mode+'model.pkl')
-        self.scalerfile = os.path.join(db, mode+'scaler.pkl')
+        self.mode = 'mlp'
+        self.clffile = os.path.join(db, self.mode + 'model.pkl')
+        self.scalerfile = os.path.join(db, self.mode + 'scaler.pkl')
         self.clf = None
         self.scaler = None
         self.metadata = {}
@@ -150,7 +148,7 @@ class Model(list):
         for f in storage - model:
             os.unlink(f)
 
-    def _get_labeler(self, start=255, step=-1):
+    def _get_labeler(self, start=0, step=1):
         i = dict()
         i['i'] = start
 
@@ -164,10 +162,10 @@ class Model(list):
 
         return f
 
-    def _learn_data(self, image=None, label=None, mode=None):
+    def _learn_data(self, image=None):
         self.classes = {}
         self.labels = {}
-        labeler = {'l': self._get_labeler(), 'r': self._get_labeler(0, 1)}
+        labeler = {'l': self._get_labeler(), 'r': self._get_labeler(0, -1)}
 
         X = []
         y = []
@@ -180,55 +178,29 @@ class Model(list):
         return np.array(X), np.array(y)
 
     def fit(self):
-        return {'svm': self._fit_svm, 'mlp': self._fit_mlp }[self.mode]()
-
-    def _fit_svm(self):
-        if len(self) == 0:
-            self.clf = None
-            return
-
-        Cs = np.logspace(-1, 5, 6)
-        gammas = np.logspace(-8, -1, 7)
-        X, y = self._learn_data()
-        self.scaler = RobustScaler()
-        self.scaler.fit(X)
-        X = self.scaler.transform(X)
-
-        svc = SVC(decision_function_shape='ovo', probability=True)
-        clf = GridSearchCV(estimator=svc,
-                           param_grid=dict(C=Cs, gamma=gammas),
-                           cv=5, n_jobs=-1)
-        clf.fit(X, y)
-        self.clf = clf.best_estimator_
-        self.metadata['score'] = clf.best_score_
-        self.metadata['C'] = clf.best_estimator_.C
-        self.metadata['gamma'] = clf.best_estimator_.gamma
-        logging.info('Model: %s', clf.best_estimator_)
-        return self.clf
-
-    def _fit_mlp(self):
         if len(self) == 0:
             self.clf = None
             return
         X, y = self._learn_data()
-        size = self.shape[0]*self.shape[1]/16
-        sizes = [(int(1.2*size),int(1.2*size),int(0.1*size),)]
-        alphas = 10.0 ** -np.arange(1, 7)
-        self.scaler = StandardScaler()
-        self.scaler.fit(X)
-        X = self.scaler.transform(X)
-        mlp = MLPClassifier(solver='lbfgs', random_state=1, activation='relu', max_iter=2000, early_stopping=True, validation_fraction=0.8)
-        clf = GridSearchCV(estimator=mlp,
-                           param_grid=dict(hidden_layer_sizes=sizes, alpha=alphas),
-                           cv=5)
-
-        clf.fit(X, y)
-        self.clf = clf.best_estimator_
-        self.metadata['score'] = clf.best_score_
-        self.metadata['size'] = ', '.join(map(str, clf.best_estimator_.hidden_layer_sizes))
-        self.metadata['alpha'] = clf.best_estimator_.alpha
-        logging.info('Model: %s', self.clf)
+        self.clf, score, self.scaler = self._fit_mlp(X, y)
+        self.metadata['score'] = score
+        self.metadata['model'] = repr(self.clf)
         return self.clf
+
+    def _fit_mlp(self, X, y):
+        scaler = StandardScaler()
+        scaler.fit(X)
+        X = scaler.transform(X)
+        size = (int(1.2 * (self.shape[0] * self.shape[1] / 16)), ) * 4
+        clf = MLPClassifier(solver='lbfgs', random_state=1,
+                            hidden_layer_sizes=size, alpha=0.1,
+                            activation='relu', max_iter=4000,
+                            early_stopping=True, validation_fraction=0.8)
+        clf.fit(X, y)
+        score = 1
+        #score = max(cross_val_score(clf, X, y, cv=5))
+        logging.info('Model: %s %f', clf, score)
+        return clf, score, scaler
 
     def predict(self, image):
         if not self.clf:
@@ -249,7 +221,7 @@ class Model(list):
         X = self.scaler.transform(X)
         T = self.clf.predict_proba(X)
         indices, classes = zip(
-            *[(i, c) for i, c in enumerate(self.clf.classes_) if c > 127])
+            *[(i, c) for i, c in enumerate(self.clf.classes_) if c > 0])
         P = T[:, (indices)]
         probability = [(P[l][c], classes[c]) for l, c in
                        enumerate(np.argmax(P, 1))]

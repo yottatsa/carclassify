@@ -94,7 +94,6 @@ var Label = function(name) {
     var self = this;
     this.name = name;
     this.showonly = ko.observable()
-    this.estimate = "0%";
     this.probes = ko.observableArray();
     this.amount = ko.pureComputed(function() {
         return model.images().map(function (i) {return i.probes().filter(function (p) { return p.label() == self.name}).length }).reduce(function (x,y) {return x+y }, 0);
