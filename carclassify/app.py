@@ -36,4 +36,9 @@ def App(name, url=None):
     def create_image():
         return flask.json.jsonify({'image': app.images.get()})
 
+    @app.route('/api/raw.png')
+    def raw():
+        return flask.Response(app.images.raw(), mimetype='image/png')
+
+
     return app

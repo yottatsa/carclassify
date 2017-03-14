@@ -6,11 +6,12 @@ import json
 import logging
 import os.path
 
+import imageio
 import numpy as np
 import skimage.io
 from influxdb import InfluxDBClient
 from skimage import img_as_float, img_as_ubyte
-from skimage.color import rgb2gray
+from skimage.color import rgb2gray, gray2rgb
 from skimage.draw import line
 from skimage.exposure import equalize_adapthist
 from skimage.morphology import label
@@ -23,6 +24,14 @@ from sklearn.preprocessing import StandardScaler
 
 from nms import nms
 
+SCALE=0.5
+SERIES=8
+
+def greenify(img):
+    img = gray2rgb(img)
+    img[:, :, 0] = 0
+    img[:, :, 2] = 0
+    return img
 
 def calc_segments(labels, lines=[100], dy=40):
     segments = []
@@ -96,7 +105,7 @@ class Model(list):
         return x, y, data
 
     def extract(self, img):
-        return rescale(img, 0.25).flatten().tolist()
+        return rescale(img, SCALE).flatten().tolist()
 
     def add_image(self, data):
         if not data['probes']:
@@ -191,14 +200,14 @@ class Model(list):
         scaler = StandardScaler()
         scaler.fit(X)
         X = scaler.transform(X)
-        size = (int(1.2 * (self.shape[0] * self.shape[1] / 16)), ) * 4
+        size = (int(1.2 * (self.shape[0] * self.shape[1] * SCALE * SCALE)), ) * 4
         clf = MLPClassifier(solver='lbfgs', random_state=1,
                             hidden_layer_sizes=size, alpha=0.1,
                             activation='relu', max_iter=4000,
-                            early_stopping=True, validation_fraction=0.8)
+                            early_stopping=True, validation_fraction=0.1)
         clf.fit(X, y)
-        score = 1
-        #score = max(cross_val_score(clf, X, y, cv=5))
+        #score = 1
+        score = max(cross_val_score(clf, X, y, cv=5))
         logging.info('Model: %s %f', clf, score)
         return clf, score, scaler
 
@@ -233,10 +242,10 @@ class Model(list):
 
 class ImageFabric():
     def __init__(self, model, url=None, of=(120, 680), dst=(
-            (117, 163),
-            (145, 279),
-            (613, 190),
-            (610, 130)
+            (135, 136),
+            (147, 261),
+            (633, 194),
+            (627, 124)
     )):
         self.model = model
         self.url = url
@@ -254,14 +263,14 @@ class ImageFabric():
     def adjust(self, img, **kwargs):
         img = img_as_float(img)
         img = equalize_adapthist(img, clip_limit=0.03)  # gives more details
-        return img
+        return img_as_float(img)
 
-    def combine(self, imgs):
+    def combine(self, imgs, _warp):
         img = np.mean(imgs, axis=0)
-        img = denoise_bilateral(img, multichannel=True)  # smooth jpeg
+        #img = denoise_bilateral(img, multichannel=True)  # smooth jpeg
         img = rgb2gray(img)
-        img = img_as_ubyte(img)
-        img = warp(img, self.tf, output_shape=self.of)
+        if _warp:
+            img = warp(img, self.tf, output_shape=self.of)
         return img
 
     def download_series(self, url, num, **kwargs):
@@ -280,12 +289,16 @@ class ImageFabric():
         series = ic.concatenate()
         return series
 
-    def fetch(self):
+    def fetch(self, warp=True):
         if self.url:
-            img = self.download_series(self.url, 8)
+            img = self.download_series(self.url, SERIES)
         else:
             img = self.open_series('test/*.jpg')
-        return self.combine(img)
+        return self.combine(img, warp)
+
+    def raw(self):
+        img = self.fetch(warp=False)
+        return imageio.imwrite(imageio.RETURN_BYTES, greenify(img), format='png')
 
     def get(self, name=None, draw=False):
         img = self.fetch()
@@ -317,7 +330,7 @@ class ImageFabric():
             name = os.path.join(self.model.db,
                                 datetime.datetime.now().isoformat()) + ".jpg"
 
-        skimage.io.imsave(name, img)
+        skimage.io.imsave(name, greenify(img))
 
         return {
             'name': name,

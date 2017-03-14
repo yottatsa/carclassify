@@ -2,3 +2,4 @@ pip
 scikit-learn
 scikit-image
 influxdb
+imageio
