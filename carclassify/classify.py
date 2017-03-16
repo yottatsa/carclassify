@@ -26,7 +26,7 @@ from sklearn.preprocessing import StandardScaler
 from nms import nms
 
 SCALE=0.5
-SERIES=30
+SERIES=20
 
 def greenify(img):
     if len(img.shape) > 2:
@@ -81,7 +81,7 @@ class Image(dict):
 
 
 class Model(list):
-    def __init__(self, db='train', shape=(35, 35), cutoff=0.9, overlap=0.3):
+    def __init__(self, db='train', shape=(35, 35), cutoff=0.9, overlap=0.25):
         self.db = db
         self.shape = shape
         self.modelfile = os.path.join(db, 'images.json')
@@ -210,11 +210,11 @@ class Model(list):
         scaler = StandardScaler()
         scaler.fit(X)
         X = scaler.transform(X)
-        size = (int(0.6 * (self.shape[0] * self.shape[1] * SCALE * SCALE)), ) * 2
+        size = (int(0.6 * (self.shape[0] * self.shape[1] * SCALE * SCALE)), ) * 3
         clf = MLPClassifier(solver='lbfgs', random_state=1,
-                            hidden_layer_sizes=size, alpha=0.1,
+                            hidden_layer_sizes=size, alpha=0.01,
                             activation='relu',
-                            early_stopping=False)
+                            early_stopping=True)
         clf.fit(X, y)
         #score = 1
         score = max(cross_val_score(clf, X, y, cv=5))
@@ -281,17 +281,8 @@ class ImageFabric():
         self.tf.estimate(src, dst)
 
     def adjust(self, img, **kwargs):
+        img = equalize_adapthist(img, clip_limit=0.04, nbins=512, kernel_size=16)
         img = rgb2lab(img)
-        return img
-
-    def combine_gray(self, imgs, _warp):
-        l = np.mean(imgs[..., 0], axis=0)
-        a = np.mean(imgs[..., 1], axis=0)
-        b = np.mean(imgs[..., 2], axis=0)
-        img=img_as_float((l*1.7+(a+b+256)*0.16).astype(np.uint8))
-        if _warp:
-            img = warp(img, self.tf, output_shape=self.of)
-        img = equalize_adapthist(img, clip_limit=0.01)
         return img
 
     def combine(self, imgs, _warp):
@@ -305,7 +296,6 @@ class ImageFabric():
         img = lab2rgb(img)
         if _warp:
             img = warp(img, self.tf, output_shape=self.of)
-        img = equalize_adapthist(img, clip_limit=0.01)
         return img
 
     def download_series(self, url, num, **kwargs):
