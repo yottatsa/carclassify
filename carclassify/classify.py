@@ -5,13 +5,14 @@ import glob
 import json
 import logging
 import os.path
+import math
 
 import imageio
 import numpy as np
 import skimage.io
 from influxdb import InfluxDBClient
 from skimage import img_as_float, img_as_ubyte
-from skimage.color import rgb2gray, gray2rgb
+from skimage.color import rgb2gray, gray2rgb, rgb2lab, lab2rgb
 from skimage.draw import line
 from skimage.exposure import equalize_adapthist
 from skimage.morphology import label
@@ -25,7 +26,8 @@ from sklearn.preprocessing import StandardScaler
 from nms import nms
 
 SCALE=0.5
-SERIES=8
+IMSCALE=1.55
+SERIES=30
 
 def greenify(img):
     img = gray2rgb(img)
@@ -33,16 +35,22 @@ def greenify(img):
     img[:, :, 2] = 0
     return img
 
-def calc_segments(labels, lines=[100], dy=40):
+def calc_segments(labels, lines=[4.0/5], dy=40):
     segments = []
-    for line in lines:
-        arr = labels[line, 10:-40]
+    for l in lines:
+        h, w = labels.shape
+        line = int(l*h)
+        arr = labels[line, :]
         bands = np.unique(label(arr == 0),
                           return_index=True,
                           return_counts=True)
         spaces = [i for i in zip(bands[1], bands[2])[1:] if i[1] >= dy / 2]
         total = sum(map(lambda x: round(float(x[1]) / dy), spaces))
-        segments.append({'y': line, 'spaces': spaces, 'total': int(total)})
+        segments.append({
+            'y': line,
+            'w': w,
+            'spaces': spaces,
+            'total': int(total)})
     return segments
 
 
@@ -57,12 +65,13 @@ class Probe(dict):
 
 
 class Image(dict):
-    def __init__(self, model, filename):
+    def __init__(self, model, filename, h=0, w=0):
         self.model = model
         self['name'] = filename
         self['probes'] = []
         self.data = self.model.images_cache.get(filename,
                                                 skimage.io.imread(filename))
+        self['h'], self['w'] = self.data.shape[:2]
 
     def add_probe(self, x, y, label):
         probe = Probe(self, x, y, label)
@@ -241,15 +250,25 @@ class Model(list):
 
 
 class ImageFabric():
-    def __init__(self, model, url=None, of=(120, 680), dst=(
-            (135, 136),
-            (147, 261),
-            (633, 194),
-            (627, 124)
+    def __init__(self, model, url=None, dst=(
+            (79, 116),
+            (86, 265),
+            (633, 190),
+            (630, 118)
     )):
+        def d(v):
+            a, b = v
+            return math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
+
+        sizes = sorted(map(d, zip(dst, dst[1:] + dst[:1])))
+        self.of = (
+            int(math.floor(sizes[0]*IMSCALE*1.1)),
+            int(math.floor(sizes[2]*IMSCALE))
+        )
+        logging.debug('Image size: %s, %s', sizes, self.of)
+
         self.model = model
         self.url = url
-        self.of = of
         self.tf = ProjectiveTransform()
         src = np.array((
             (0, 0),
@@ -261,16 +280,17 @@ class ImageFabric():
         self.tf.estimate(src, dst)
 
     def adjust(self, img, **kwargs):
-        img = img_as_float(img)
-        img = equalize_adapthist(img, clip_limit=0.03)  # gives more details
-        return img_as_float(img)
+        img = rgb2lab(img)
+        return img
 
     def combine(self, imgs, _warp):
-        img = np.mean(imgs, axis=0)
-        #img = denoise_bilateral(img, multichannel=True)  # smooth jpeg
-        img = rgb2gray(img)
+        l = np.mean(imgs[:,:,:,0], axis=0)
+        a = np.mean(imgs[:,:,:,1], axis=0)
+        b = np.mean(imgs[:,:,:,2], axis=0)
+        img=img_as_float((l*1.7+(a+b+256)*0.16).astype(np.uint8))
         if _warp:
             img = warp(img, self.tf, output_shape=self.of)
+        img = equalize_adapthist(img, clip_limit=0.01)
         return img
 
     def download_series(self, url, num, **kwargs):
@@ -298,7 +318,8 @@ class ImageFabric():
 
     def raw(self):
         img = self.fetch(warp=False)
-        return imageio.imwrite(imageio.RETURN_BYTES, greenify(img), format='png')
+        img = greenify(img)
+        return imageio.imwrite(imageio.RETURN_BYTES, img, format='png')
 
     def get(self, name=None, draw=False):
         img = self.fetch()
@@ -334,6 +355,8 @@ class ImageFabric():
 
         return {
             'name': name,
+            'h': self.of[0],
+            'w': self.of[1],
             'probes': probes,
             'segments': segments,
         }
