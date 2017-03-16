@@ -36,10 +36,10 @@ def greenify(img):
     img[:, :, 2] = 0
     return img
 
-def calc_segments(labels, lines=[4.0/5], dy=40):
+def calc_segments(labels, lines=[4.0/5], dy=30):
     segments = []
     for l in lines:
-        h, w, d = labels.shape
+        h, w = labels.shape
         line = int(l*h)
         arr = labels[line, :]
         bands = np.unique(label(arr == 0),
@@ -214,7 +214,7 @@ class Model(list):
         clf = MLPClassifier(solver='lbfgs', random_state=1,
                             hidden_layer_sizes=size, alpha=0.1,
                             activation='relu',
-                            early_stopping=True)
+                            early_stopping=False)
         clf.fit(X, y)
         #score = 1
         score = max(cross_val_score(clf, X, y, cv=5))
@@ -253,8 +253,8 @@ class Model(list):
 class ImageFabric():
     def __init__(self, model, url=None, dst=(
             (79, 116),
-            (86, 265),
-            (633, 190),
+            (91, 274),
+            (631, 194),
             (630, 118)
     )):
         def d(v):
@@ -339,7 +339,7 @@ class ImageFabric():
     def get(self, name=None, draw=False):
         img = self.fetch()
 
-        labels = np.zeros(shape=img.shape)
+        labels = np.zeros(shape=img.shape[:2])
         probes = []
 
         for x, y, dx, dy, confidence, label in self.model.predict(img):
