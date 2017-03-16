@@ -26,10 +26,11 @@ from sklearn.preprocessing import StandardScaler
 from nms import nms
 
 SCALE=0.5
-IMSCALE=1.55
 SERIES=30
 
 def greenify(img):
+    if len(img.shape) > 2:
+        return img
     img = gray2rgb(img)
     img[:, :, 0] = 0
     img[:, :, 2] = 0
@@ -38,7 +39,7 @@ def greenify(img):
 def calc_segments(labels, lines=[4.0/5], dy=40):
     segments = []
     for l in lines:
-        h, w = labels.shape
+        h, w, d = labels.shape
         line = int(l*h)
         arr = labels[line, :]
         bands = np.unique(label(arr == 0),
@@ -80,7 +81,7 @@ class Image(dict):
 
 
 class Model(list):
-    def __init__(self, db='train', shape=(50, 50), cutoff=0.9, overlap=0.3):
+    def __init__(self, db='train', shape=(35, 35), cutoff=0.9, overlap=0.3):
         self.db = db
         self.shape = shape
         self.modelfile = os.path.join(db, 'images.json')
@@ -102,7 +103,7 @@ class Model(list):
 
     def get_probe(self, image, x, y, name=None):
         dy, dx = self.shape
-        h, w = image.shape
+        h, w, d = image.shape
         x = x - max(min(x, 0), x + dx - w)
         y = y - max(min(y, 0), y + dy - h)
         if name:
@@ -161,7 +162,7 @@ class Model(list):
         joblib.dump(self.scaler, self.scalerfile)
 
     def cleanup(self):
-        storage = set(glob.glob(os.path.join(self.db, '*.jpg')))
+        storage = set(glob.glob(os.path.join(self.db, '*.png')))
         model = set([image['name'] for image in self])
         for f in storage - model:
             os.unlink(f)
@@ -209,11 +210,11 @@ class Model(list):
         scaler = StandardScaler()
         scaler.fit(X)
         X = scaler.transform(X)
-        size = (int(1.2 * (self.shape[0] * self.shape[1] * SCALE * SCALE)), ) * 4
+        size = (int(0.6 * (self.shape[0] * self.shape[1] * SCALE * SCALE)), ) * 2
         clf = MLPClassifier(solver='lbfgs', random_state=1,
                             hidden_layer_sizes=size, alpha=0.1,
-                            activation='relu', max_iter=4000,
-                            early_stopping=True, validation_fraction=0.1)
+                            activation='relu',
+                            early_stopping=True)
         clf.fit(X, y)
         #score = 1
         score = max(cross_val_score(clf, X, y, cv=5))
@@ -229,7 +230,7 @@ class Model(list):
         coords = []
         X = []
 
-        h, w = image.shape
+        h, w, d = image.shape
         for x in range(0, w - dx + 1, dx / 10):
             for y in range(0, h - dy + 1, dy / 10):
                 x, y, probe = self.get_probe(image, x, y)
@@ -262,8 +263,8 @@ class ImageFabric():
 
         sizes = sorted(map(d, zip(dst, dst[1:] + dst[:1])))
         self.of = (
-            int(math.floor(sizes[0]*IMSCALE*1.1)),
-            int(math.floor(sizes[2]*IMSCALE))
+            int(math.floor(sizes[0])),
+            int(math.floor(sizes[2]))
         )
         logging.debug('Image size: %s, %s', sizes, self.of)
 
@@ -283,11 +284,25 @@ class ImageFabric():
         img = rgb2lab(img)
         return img
 
-    def combine(self, imgs, _warp):
-        l = np.mean(imgs[:,:,:,0], axis=0)
-        a = np.mean(imgs[:,:,:,1], axis=0)
-        b = np.mean(imgs[:,:,:,2], axis=0)
+    def combine_gray(self, imgs, _warp):
+        l = np.mean(imgs[..., 0], axis=0)
+        a = np.mean(imgs[..., 1], axis=0)
+        b = np.mean(imgs[..., 2], axis=0)
         img=img_as_float((l*1.7+(a+b+256)*0.16).astype(np.uint8))
+        if _warp:
+            img = warp(img, self.tf, output_shape=self.of)
+        img = equalize_adapthist(img, clip_limit=0.01)
+        return img
+
+    def combine(self, imgs, _warp):
+        l = np.mean(imgs[..., 0], axis=0)
+        a = np.mean(imgs[..., 1], axis=0)
+        b = np.mean(imgs[..., 2], axis=0)
+        img = np.zeros(l.shape+(3,), np.float)
+        img[..., 0] = l
+        img[..., 1] = a
+        img[..., 2] = b
+        img = lab2rgb(img)
         if _warp:
             img = warp(img, self.tf, output_shape=self.of)
         img = equalize_adapthist(img, clip_limit=0.01)
@@ -313,7 +328,7 @@ class ImageFabric():
         if self.url:
             img = self.download_series(self.url, SERIES)
         else:
-            img = self.open_series('test/*.jpg')
+            img = self.open_series('test/*.png')
         return self.combine(img, warp)
 
     def raw(self):
@@ -349,7 +364,7 @@ class ImageFabric():
 
         if not name:
             name = os.path.join(self.model.db,
-                                datetime.datetime.now().isoformat()) + ".jpg"
+                                datetime.datetime.now().isoformat()) + ".png"
 
         skimage.io.imsave(name, greenify(img))
 

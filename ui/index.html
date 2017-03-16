@@ -55,7 +55,7 @@
         <ul class="images-list" data-bind="foreach: images">
             <li class="panel panel-default panel-body" data-bind="visible: probes().length == 0 || filteredProbes().length > 0">
                 <ul class="image-overlay" data-bind="foreach: filteredProbes, dropZone: { accepts: ['label', 'probe'], drop: dragProbe }, style: {height: h() + 'px', width: w() + 'px'}">
-                    <li class="box" data-bind="css: label, style: {left: x() + 'px', top: y() + 'px'}, dragZone: { name: 'probe' }"></li>
+                    <li class="box" data-bind="css: label, style: {left: x() + 'px', top: y() + 'px'}, dragZone: { name: 'probe' }, dropZone: { accepts: ['label', 'probe'], drop: updateProbe }"></li>
                 </ul>
                 <img data-bind="attr: { src: name }" />
                 <span class="estimate" data-bind="text: estimate">N/A</span>

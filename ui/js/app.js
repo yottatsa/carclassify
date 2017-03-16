@@ -127,6 +127,19 @@ var Probe = function(image, label, x, y) {
     this.delete = function () {
         self.image.probes.remove(self);
     };
+    this.updateProbe = function(data, model) {
+        if (data instanceof Label) {
+            model.label(data.name);
+        }
+        if (data instanceof Probe) {
+            var bodyRect = document.body.getBoundingClientRect();
+            var rect = this.element.getBoundingClientRect();
+            var x = event.offsetX-rect.left+bodyRect.left+model.x();
+            var y = event.offsetY-rect.top+bodyRect.top+model.y();
+            data.x(x);
+            data.y(y);
+        }
+    };
 }
 
 var Image = function(data) {
