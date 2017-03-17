@@ -26,7 +26,7 @@ from sklearn.preprocessing import StandardScaler
 from nms import nms
 
 SCALE=0.5
-SERIES=20
+SERIES=50
 
 def greenify(img):
     if len(img.shape) > 2:
@@ -117,8 +117,8 @@ class Model(list):
     def extract(self, img):
         img = rgb2hsv(img)
         f = rescale(img[..., 2], SCALE).flatten().tolist() # v
-        f = f+rescale(img[..., 0], SCALE*SCALE).flatten().tolist() # h
-        f = f+rescale(img[..., 1], SCALE*SCALE).flatten().tolist() # s
+        f = f+rescale(img[..., 0], SCALE).flatten().tolist() # h
+        f = f+rescale(img[..., 1], SCALE).flatten().tolist() # s
         return f
 
     def add_image(self, data):
