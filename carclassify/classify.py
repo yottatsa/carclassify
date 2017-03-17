@@ -12,7 +12,7 @@ import numpy as np
 import skimage.io
 from influxdb import InfluxDBClient
 from skimage import img_as_float, img_as_ubyte
-from skimage.color import rgb2gray, gray2rgb, rgb2lab, lab2rgb
+from skimage.color import rgb2gray, gray2rgb, rgb2lab, lab2rgb, rgb2hsv
 from skimage.draw import line
 from skimage.exposure import equalize_adapthist
 from skimage.morphology import label
@@ -115,7 +115,11 @@ class Model(list):
         return x, y, data
 
     def extract(self, img):
-        return rescale(img, SCALE).flatten().tolist()
+        img = rgb2hsv(img)
+        f = rescale(img[..., 2], SCALE).flatten().tolist() # v
+        f = f+rescale(img[..., 0], SCALE*SCALE).flatten().tolist() # h
+        f = f+rescale(img[..., 1], SCALE*SCALE).flatten().tolist() # s
+        return f
 
     def add_image(self, data):
         if not data['probes']:
@@ -210,7 +214,7 @@ class Model(list):
         scaler = StandardScaler()
         scaler.fit(X)
         X = scaler.transform(X)
-        size = (int(0.6 * (self.shape[0] * self.shape[1] * SCALE * SCALE)), ) * 3
+        size = (int(0.6 * (self.shape[0] * self.shape[1] * SCALE * SCALE)), ) * 4
         clf = MLPClassifier(solver='lbfgs', random_state=1,
                             hidden_layer_sizes=size, alpha=0.01,
                             activation='relu',
